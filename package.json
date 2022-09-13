@@ -1,5 +1,5 @@
 {
-  "name": "vite-plugin-legacy",
+  "name": "vite-plugin-legacy-extends",
   "version": "2.1.0",
   "description": "",
   "main": "./plugin-legacy/dist/index.cjs",
