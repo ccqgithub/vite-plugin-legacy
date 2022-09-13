@@ -20,6 +20,9 @@ interface Options {
      * default: false
      */
     modernPolyfills?: boolean | string[];
+    /**
+     * modern browser polyfills
+    */
     modernTargets?: Record<string, string[]>;
     /**
      * default: true

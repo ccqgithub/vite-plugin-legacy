@@ -232,7 +232,7 @@ function viteLegacyPlugin(options = {}) {
       }
       if (!isLegacyChunk(chunk, opts)) {
         if (options.modernPolyfills && !Array.isArray(options.modernPolyfills)) {
-          await detectPolyfills(raw, { esmodules: true }, modernPolyfills);
+          await detectPolyfills(raw, { esmodules: !options.modernTargets, ...options.modernTargets }, modernPolyfills);
         }
         const ms = new MagicString__default(raw);
         if (genDynamicFallback && chunk.isEntry) {
