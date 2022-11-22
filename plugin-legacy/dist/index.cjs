@@ -8,11 +8,68 @@ const node_module = require('node:module');
 const node_url = require('node:url');
 const vite = require('vite');
 const MagicString = require('magic-string');
+const require$$0 = require('tty');
 
-function _interopDefaultLegacy (e) { return e && typeof e === 'object' && 'default' in e ? e["default"] : e; }
+var picocolors = {exports: {}};
 
-const path__default = /*#__PURE__*/_interopDefaultLegacy(path);
-const MagicString__default = /*#__PURE__*/_interopDefaultLegacy(MagicString);
+let tty = require$$0;
+
+let isColorSupported =
+	!("NO_COLOR" in process.env || process.argv.includes("--no-color")) &&
+	("FORCE_COLOR" in process.env ||
+		process.argv.includes("--color") ||
+		process.platform === "win32" ||
+		(tty.isatty(1) && process.env.TERM !== "dumb") ||
+		"CI" in process.env);
+
+let formatter =
+	(open, close, replace = open) =>
+	input => {
+		let string = "" + input;
+		let index = string.indexOf(close, open.length);
+		return ~index
+			? open + replaceClose(string, close, replace, index) + close
+			: open + string + close
+	};
+
+let replaceClose = (string, close, replace, index) => {
+	let start = string.substring(0, index) + replace;
+	let end = string.substring(index + close.length);
+	let nextIndex = end.indexOf(close);
+	return ~nextIndex ? start + replaceClose(end, close, replace, nextIndex) : start + end
+};
+
+let createColors = (enabled = isColorSupported) => ({
+	isColorSupported: enabled,
+	reset: enabled ? s => `\x1b[0m${s}\x1b[0m` : String,
+	bold: enabled ? formatter("\x1b[1m", "\x1b[22m", "\x1b[22m\x1b[1m") : String,
+	dim: enabled ? formatter("\x1b[2m", "\x1b[22m", "\x1b[22m\x1b[2m") : String,
+	italic: enabled ? formatter("\x1b[3m", "\x1b[23m") : String,
+	underline: enabled ? formatter("\x1b[4m", "\x1b[24m") : String,
+	inverse: enabled ? formatter("\x1b[7m", "\x1b[27m") : String,
+	hidden: enabled ? formatter("\x1b[8m", "\x1b[28m") : String,
+	strikethrough: enabled ? formatter("\x1b[9m", "\x1b[29m") : String,
+	black: enabled ? formatter("\x1b[30m", "\x1b[39m") : String,
+	red: enabled ? formatter("\x1b[31m", "\x1b[39m") : String,
+	green: enabled ? formatter("\x1b[32m", "\x1b[39m") : String,
+	yellow: enabled ? formatter("\x1b[33m", "\x1b[39m") : String,
+	blue: enabled ? formatter("\x1b[34m", "\x1b[39m") : String,
+	magenta: enabled ? formatter("\x1b[35m", "\x1b[39m") : String,
+	cyan: enabled ? formatter("\x1b[36m", "\x1b[39m") : String,
+	white: enabled ? formatter("\x1b[37m", "\x1b[39m") : String,
+	gray: enabled ? formatter("\x1b[90m", "\x1b[39m") : String,
+	bgBlack: enabled ? formatter("\x1b[40m", "\x1b[49m") : String,
+	bgRed: enabled ? formatter("\x1b[41m", "\x1b[49m") : String,
+	bgGreen: enabled ? formatter("\x1b[42m", "\x1b[49m") : String,
+	bgYellow: enabled ? formatter("\x1b[43m", "\x1b[49m") : String,
+	bgBlue: enabled ? formatter("\x1b[44m", "\x1b[49m") : String,
+	bgMagenta: enabled ? formatter("\x1b[45m", "\x1b[49m") : String,
+	bgCyan: enabled ? formatter("\x1b[46m", "\x1b[49m") : String,
+	bgWhite: enabled ? formatter("\x1b[47m", "\x1b[49m") : String,
+});
+
+picocolors.exports = createColors();
+picocolors.exports.createColors = createColors;
 
 let babel;
 async function loadBabel() {
@@ -51,13 +108,13 @@ function toOutputFilePathInHtml(filename, type, hostId, hostType, config, toRela
   }
 }
 function getBaseInHTML(urlRelativePath, config) {
-  return config.base === "./" || config.base === "" ? path__default.posix.join(
-    path__default.posix.relative(urlRelativePath, "").slice(0, -2),
+  return config.base === "./" || config.base === "" ? path.posix.join(
+    path.posix.relative(urlRelativePath, "").slice(0, -2),
     "./"
   ) : config.base;
 }
 function toAssetPathFromHtml(filename, htmlPath, config) {
-  const relativeUrlPath = vite.normalizePath(path__default.relative(config.root, htmlPath));
+  const relativeUrlPath = vite.normalizePath(path.relative(config.root, htmlPath));
   const toRelative = (filename2, hostId) => getBaseInHTML(relativeUrlPath, config) + filename2;
   return toOutputFilePathInHtml(
     filename,
@@ -113,6 +170,7 @@ function viteLegacyPlugin(options = {}) {
       legacyPolyfills.add(i);
     });
   }
+  let overriddenBuildTarget = false;
   const legacyConfigPlugin = {
     name: "vite:legacy-config",
     config(config2, env) {
@@ -123,12 +181,31 @@ function viteLegacyPlugin(options = {}) {
         if (!config2.build.cssTarget) {
           config2.build.cssTarget = "chrome61";
         }
+        if (genLegacy) {
+          overriddenBuildTarget = config2.build.target !== void 0;
+          config2.build.target = [
+            "es2020",
+            "edge79",
+            "firefox67",
+            "chrome64",
+            "safari11.1"
+          ];
+        }
       }
       return {
         define: {
           "import.meta.env.LEGACY": env.command === "serve" || config2.build?.ssr ? false : legacyEnvVarMarker
         }
       };
+    },
+    configResolved(config2) {
+      if (overriddenBuildTarget) {
+        config2.logger.warn(
+          picocolors.exports.yellow(
+            `plugin-legacy overrode 'build.target'. You should pass 'targets' as an option to this plugin with the list of legacy browsers to support instead.`
+          )
+        );
+      }
     }
   };
   const legacyGenerateBundlePlugin = {
@@ -198,7 +275,7 @@ function viteLegacyPlugin(options = {}) {
       }
       const getLegacyOutputFileName = (fileNames, defaultFileName = "[name]-legacy.[hash].js") => {
         if (!fileNames) {
-          return path__default.posix.join(config.build.assetsDir, defaultFileName);
+          return path.posix.join(config.build.assetsDir, defaultFileName);
         }
         return (chunkInfo) => {
           let fileName = typeof fileNames === "function" ? fileNames(chunkInfo) : fileNames;
@@ -234,7 +311,7 @@ function viteLegacyPlugin(options = {}) {
         if (options.modernPolyfills && !Array.isArray(options.modernPolyfills)) {
           await detectPolyfills(raw, { esmodules: !options.modernTargets, ...options.modernTargets }, modernPolyfills);
         }
-        const ms = new MagicString__default(raw);
+        const ms = new MagicString(raw);
         if (genDynamicFallback && chunk.isEntry) {
           ms.prepend(forceDynamicImportUsage);
         }
@@ -464,7 +541,7 @@ async function buildPolyfillChunk(mode, imports, bundle, facadeToChunkMap, build
   minify = minify ? "terser" : false;
   const res = await vite.build({
     mode,
-    root: path__default.dirname(node_url.fileURLToPath((typeof document === 'undefined' ? new (require('u' + 'rl').URL)('file:' + __filename).href : (document.currentScript && document.currentScript.src || new URL('index.cjs', document.baseURI).href)))),
+    root: path.dirname(node_url.fileURLToPath((typeof document === 'undefined' ? new (require('u' + 'rl').URL)('file:' + __filename).href : (document.currentScript && document.currentScript.src || new URL('index.cjs', document.baseURI).href)))),
     configFile: false,
     logLevel: "error",
     plugins: [polyfillsPlugin(imports, excludeSystemJS)],
@@ -577,5 +654,5 @@ const cspHashes = [
 
 module.exports = viteLegacyPlugin;
 module.exports.cspHashes = cspHashes;
-module.exports["default"] = viteLegacyPlugin;
+module.exports.default = viteLegacyPlugin;
 module.exports.detectPolyfills = detectPolyfills;
