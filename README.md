@@ -1,6 +1,9 @@
 # Extend @vitejs/plugin-legacy
 
-Add option `modernTargets` to @vitejs/plugin-legacy: https://github.com/vitejs/vite/issues/10093.
+Add option `modernTargets` to @vitejs/plugin-legacy: 
+
+- https://github.com/vitejs/vite/issues/6922
+- https://github.com/vitejs/vite/issues/10093.
 
 ```ts
 legacy({
@@ -8,7 +11,7 @@ legacy({
   modernPolyfills: true,
   modernTargets: {
     browsers: [
-      // 'defaults',
+      'defaults',
       'chrome 87',
       'safari 13',
       'firefox 78',

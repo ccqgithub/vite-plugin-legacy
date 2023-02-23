@@ -9,8 +9,13 @@ const node_url = require('node:url');
 const vite = require('vite');
 const MagicString = require('magic-string');
 const require$$0 = require('tty');
+const browserslist = require('browserslist');
 
-var picocolors = {exports: {}};
+var picocolorsExports = {};
+var picocolors = {
+  get exports(){ return picocolorsExports; },
+  set exports(v){ picocolorsExports = v; },
+};
 
 let tty = require$$0;
 
@@ -69,15 +74,26 @@ let createColors = (enabled = isColorSupported) => ({
 });
 
 picocolors.exports = createColors();
-picocolors.exports.createColors = createColors;
+picocolorsExports.createColors = createColors;
+
+const safari10NoModuleFix = `!function(){var e=document,t=e.createElement("script");if(!("noModule"in t)&&"onbeforeload"in t){var n=!1;e.addEventListener("beforeload",(function(e){if(e.target===t)n=!0;else if(!e.target.hasAttribute("nomodule")||!n)return;e.preventDefault()}),!0),t.type="module",t.src=".",e.head.appendChild(t),t.remove()}}();`;
+const legacyPolyfillId = "vite-legacy-polyfill";
+const legacyEntryId = "vite-legacy-entry";
+const systemJSInlineCode = `System.import(document.getElementById('${legacyEntryId}').getAttribute('data-src'))`;
+const detectModernBrowserVarName = "__vite_is_modern_browser";
+const detectModernBrowserDetector = 'import.meta.url;import("_").catch(()=>1);async function* g(){};';
+const detectModernBrowserCode = `${detectModernBrowserDetector}window.${detectModernBrowserVarName}=true;`;
+const dynamicFallbackInlineCode = `!function(){if(window.${detectModernBrowserVarName})return;console.warn("vite: loading legacy chunks, syntax error above and the same error below should be ignored");var e=document.getElementById("${legacyPolyfillId}"),n=document.createElement("script");n.src=e.src,n.onload=function(){${systemJSInlineCode}},document.body.appendChild(n)}();`;
+const modernChunkLegacyGuard = `export function __vite_legacy_guard(){${detectModernBrowserDetector}};`;
 
 let babel;
 async function loadBabel() {
   if (!babel) {
-    babel = await import('@babel/standalone');
+    babel = await import('@babel/core');
   }
   return babel;
 }
+const { loadConfig: browserslistLoadConfig } = browserslist;
 function toOutputFilePathInHtml(filename, type, hostId, hostType, config, toRelative) {
   const { renderBuiltUrl } = config.experimental;
   let relative = config.base === "" || config.base === "./";
@@ -125,21 +141,12 @@ function toAssetPathFromHtml(filename, htmlPath, config) {
     toRelative
   );
 }
-const safari10NoModuleFix = `!function(){var e=document,t=e.createElement("script");if(!("noModule"in t)&&"onbeforeload"in t){var n=!1;e.addEventListener("beforeload",(function(e){if(e.target===t)n=!0;else if(!e.target.hasAttribute("nomodule")||!n)return;e.preventDefault()}),!0),t.type="module",t.src=".",e.head.appendChild(t),t.remove()}}();`;
-const legacyPolyfillId = "vite-legacy-polyfill";
-const legacyEntryId = "vite-legacy-entry";
-const systemJSInlineCode = `System.import(document.getElementById('${legacyEntryId}').getAttribute('data-src'))`;
-const detectModernBrowserVarName = "__vite_is_modern_browser";
-const detectModernBrowserCode = `try{import.meta.url;import("_").catch(()=>1);}catch(e){}window.${detectModernBrowserVarName}=true;`;
-const dynamicFallbackInlineCode = `!function(){if(window.${detectModernBrowserVarName})return;console.warn("vite: loading legacy build because dynamic import or import.meta.url is unsupported, syntax error above should be ignored");var e=document.getElementById("${legacyPolyfillId}"),n=document.createElement("script");n.src=e.src,n.onload=function(){${systemJSInlineCode}},document.body.appendChild(n)}();`;
-const forceDynamicImportUsage = `export function __vite_legacy_guard(){import('data:text/javascript,')};`;
 const legacyEnvVarMarker = `__VITE_IS_LEGACY__`;
 const _require = node_module.createRequire((typeof document === 'undefined' ? new (require('u' + 'rl').URL)('file:' + __filename).href : (document.currentScript && document.currentScript.src || new URL('index.cjs', document.baseURI).href)));
 function viteLegacyPlugin(options = {}) {
   let config;
-  const targets = options.targets || "defaults";
+  let targets;
   const genLegacy = options.renderLegacyChunks !== false;
-  const genDynamicFallback = genLegacy;
   const debugFlags = (process.env.DEBUG || "").split(",");
   const isDebug = debugFlags.includes("vite:*") || debugFlags.includes("vite:legacy");
   const facadeToLegacyChunkMap = /* @__PURE__ */ new Map();
@@ -188,7 +195,7 @@ function viteLegacyPlugin(options = {}) {
             "edge79",
             "firefox67",
             "chrome64",
-            "safari11.1"
+            "safari12"
           ];
         }
       }
@@ -201,7 +208,7 @@ function viteLegacyPlugin(options = {}) {
     configResolved(config2) {
       if (overriddenBuildTarget) {
         config2.logger.warn(
-          picocolors.exports.yellow(
+          picocolorsExports.yellow(
             `plugin-legacy overrode 'build.target'. You should pass 'targets' as an option to this plugin with the list of legacy browsers to support instead.`
           )
         );
@@ -238,7 +245,7 @@ function viteLegacyPlugin(options = {}) {
       if (!genLegacy) {
         return;
       }
-      if (legacyPolyfills.size || genDynamicFallback) {
+      if (legacyPolyfills.size) {
         await detectPolyfills(
           `Promise.resolve(); Promise.all();`,
           targets,
@@ -253,6 +260,8 @@ function viteLegacyPlugin(options = {}) {
           legacyPolyfills,
           bundle,
           facadeToLegacyPolyfillMap,
+          // force using terser for legacy polyfill minification, since esbuild
+          // isn't legacy-safe
           config.build,
           "iife",
           opts,
@@ -273,7 +282,9 @@ function viteLegacyPlugin(options = {}) {
       if (!genLegacy || config.build.ssr) {
         return;
       }
-      const getLegacyOutputFileName = (fileNames, defaultFileName = "[name]-legacy.[hash].js") => {
+      targets = options.targets || browserslistLoadConfig({ path: config.root }) || "last 2 versions and not dead, > 0.3%, Firefox ESR";
+      isDebug && console.log(`[@vitejs/plugin-legacy] targets:`, targets);
+      const getLegacyOutputFileName = (fileNames, defaultFileName = "[name]-legacy-[hash].js") => {
         if (!fileNames) {
           return path.posix.join(config.build.assetsDir, defaultFileName);
         }
@@ -309,11 +320,11 @@ function viteLegacyPlugin(options = {}) {
       }
       if (!isLegacyChunk(chunk, opts)) {
         if (options.modernPolyfills && !Array.isArray(options.modernPolyfills)) {
-          await detectPolyfills(raw, { esmodules: !options.modernTargets, ...options.modernTargets }, modernPolyfills);
+          await detectPolyfills(raw, opts.modernTargets || { esmodules: true }, modernPolyfills);
         }
         const ms = new MagicString(raw);
-        if (genDynamicFallback && chunk.isEntry) {
-          ms.prepend(forceDynamicImportUsage);
+        if (genLegacy && chunk.isEntry) {
+          ms.prepend(modernChunkLegacyGuard);
         }
         if (raw.includes(legacyEnvVarMarker)) {
           const re = new RegExp(legacyEnvVarMarker, "g");
@@ -345,13 +356,16 @@ function viteLegacyPlugin(options = {}) {
       const needPolyfills = options.polyfills !== false && !Array.isArray(options.polyfills);
       const sourceMaps = !!config.build.sourcemap;
       const babel2 = await loadBabel();
-      const { code, map } = babel2.transform(raw, {
+      const result = babel2.transform(raw, {
         babelrc: false,
         configFile: false,
         compact: !!config.build.minify,
         sourceMaps,
-        inputSourceMap: sourceMaps ? chunk.map : void 0,
+        inputSourceMap: void 0,
+        // sourceMaps ? chunk.map : undefined, `.map` TODO: moved to OutputChunk?
         presets: [
+          // forcing our plugin to run before preset-env by wrapping it in a
+          // preset so we can catch the injected import statements...
           [
             () => ({
               plugins: [
@@ -362,7 +376,7 @@ function viteLegacyPlugin(options = {}) {
             })
           ],
           [
-            "env",
+            "@babel/preset-env",
             createBabelPresetEnvOptions(targets, {
               needPolyfills,
               ignoreBrowserslistConfig: options.ignoreBrowserslistConfig
@@ -370,8 +384,8 @@ function viteLegacyPlugin(options = {}) {
           ]
         ]
       });
-      if (code)
-        return { code, map };
+      if (result)
+        return { code: result.code, map: result.map };
       return null;
     },
     transformIndexHtml(html, { chunk }) {
@@ -447,6 +461,9 @@ function viteLegacyPlugin(options = {}) {
           attrs: {
             nomodule: true,
             crossorigin: true,
+            // we set the entry path on the element as an attribute so that the
+            // script content will stay consistent - which allows using a constant
+            // hash value for CSP.
             id: legacyEntryId,
             "data-src": toAssetPathFromHtml(
               legacyEntryFilename,
@@ -462,7 +479,7 @@ function viteLegacyPlugin(options = {}) {
           `No corresponding legacy entry chunk found for ${htmlFilename}`
         );
       }
-      if (genDynamicFallback && legacyPolyfillFilename && legacyEntryFilename) {
+      if (genLegacy && legacyPolyfillFilename && legacyEntryFilename) {
         tags.push({
           tag: "script",
           attrs: { type: "module" },
@@ -487,7 +504,7 @@ function viteLegacyPlugin(options = {}) {
       }
       if (isLegacyBundle(bundle, opts)) {
         for (const name in bundle) {
-          if (bundle[name].type === "asset") {
+          if (bundle[name].type === "asset" && !/.+\.map$/.test(name)) {
             delete bundle[name];
           }
         }
@@ -498,18 +515,20 @@ function viteLegacyPlugin(options = {}) {
 }
 async function detectPolyfills(code, targets, list) {
   const babel2 = await loadBabel();
-  const { ast } = babel2.transform(code, {
+  const result = babel2.transform(code, {
     ast: true,
     babelrc: false,
     configFile: false,
     presets: [
       [
-        "env",
-        createBabelPresetEnvOptions(targets, { ignoreBrowserslistConfig: true })
+        "@babel/preset-env",
+        createBabelPresetEnvOptions(targets, {
+          ignoreBrowserslistConfig: true
+        })
       ]
     ]
   });
-  for (const node of ast.program.body) {
+  for (const node of result.ast.program.body) {
     if (node.type === "ImportDeclaration") {
       const source = node.source.value;
       if (source.startsWith("core-js/") || source.startsWith("regenerator-runtime/")) {
@@ -541,6 +560,7 @@ async function buildPolyfillChunk(mode, imports, bundle, facadeToChunkMap, build
   minify = minify ? "terser" : false;
   const res = await vite.build({
     mode,
+    // so that everything is resolved from here
     root: path.dirname(node_url.fileURLToPath((typeof document === 'undefined' ? new (require('u' + 'rl').URL)('file:' + __filename).href : (document.currentScript && document.currentScript.src || new URL('index.cjs', document.baseURI).href)))),
     configFile: false,
     logLevel: "error",
@@ -559,9 +579,15 @@ async function buildPolyfillChunk(mode, imports, bundle, facadeToChunkMap, build
         }
       }
     },
+    // Don't run esbuild for transpilation or minification
+    // because we don't want to transpile code.
     esbuild: false,
     optimizeDeps: {
       esbuildOptions: {
+        // If a value above 'es5' is set, esbuild injects helper functions which uses es2015 features.
+        // This limits the input code not to include es2015+ codes.
+        // But core-js is the only dependency which includes commonjs code
+        // and core-js doesn't include es2015+ codes.
         target: "es5"
       }
     }
@@ -589,7 +615,7 @@ function polyfillsPlugin(imports, excludeSystemJS) {
     },
     load(id) {
       if (id === polyfillId) {
-        return [...imports].map((i) => `import "${i}";`).join("") + (excludeSystemJS ? "" : `import "systemjs/dist/s.min.js";`);
+        return [...imports].map((i) => `import ${JSON.stringify(i)};`).join("") + (excludeSystemJS ? "" : `import "systemjs/dist/s.min.js";`);
       }
     }
   };
@@ -611,7 +637,7 @@ function recordAndRemovePolyfillBabelPlugin(polyfills) {
     name: "vite-remove-polyfill-import",
     post({ path: path2 }) {
       path2.get("body").forEach((p) => {
-        if (t.isImportDeclaration(p)) {
+        if (t.isImportDeclaration(p.node)) {
           polyfills.add(p.node.source.value);
           p.remove();
         }
@@ -646,11 +672,11 @@ function wrapIIFEBabelPlugin() {
   };
 }
 const cspHashes = [
-  node_crypto.createHash("sha256").update(safari10NoModuleFix).digest("base64"),
-  node_crypto.createHash("sha256").update(systemJSInlineCode).digest("base64"),
-  node_crypto.createHash("sha256").update(detectModernBrowserCode).digest("base64"),
-  node_crypto.createHash("sha256").update(dynamicFallbackInlineCode).digest("base64")
-];
+  safari10NoModuleFix,
+  systemJSInlineCode,
+  detectModernBrowserCode,
+  dynamicFallbackInlineCode
+].map((i) => node_crypto.createHash("sha256").update(i).digest("base64"));
 
 module.exports = viteLegacyPlugin;
 module.exports.cspHashes = cspHashes;

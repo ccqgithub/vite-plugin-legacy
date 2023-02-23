@@ -7,6 +7,9 @@ interface Options {
     targets?: string | string[] | {
         [key: string]: string;
     };
+    modernTargets?: string | string[] | {
+      [key: string]: string;
+    };
     /**
      * default: false
      */
@@ -20,10 +23,6 @@ interface Options {
      * default: false
      */
     modernPolyfills?: boolean | string[];
-    /**
-     * modern browser polyfills
-    */
-    modernTargets?: Record<string, string[]>;
     /**
      * default: true
      */
