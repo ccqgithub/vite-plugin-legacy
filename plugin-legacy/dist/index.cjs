@@ -320,7 +320,7 @@ function viteLegacyPlugin(options = {}) {
       }
       if (!isLegacyChunk(chunk, opts)) {
         if (options.modernPolyfills && !Array.isArray(options.modernPolyfills)) {
-          await detectPolyfills(raw, opts.modernTargets || { esmodules: true }, modernPolyfills);
+          await detectPolyfills(raw, options.modernTargets || { esmodules: true }, modernPolyfills);
         }
         const ms = new MagicString(raw);
         if (genLegacy && chunk.isEntry) {
