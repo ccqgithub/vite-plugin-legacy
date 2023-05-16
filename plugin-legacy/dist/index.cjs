@@ -82,7 +82,7 @@ const legacyEntryId = "vite-legacy-entry";
 const systemJSInlineCode = `System.import(document.getElementById('${legacyEntryId}').getAttribute('data-src'))`;
 const detectModernBrowserVarName = "__vite_is_modern_browser";
 const detectModernBrowserDetector = 'import.meta.url;import("_").catch(()=>1);async function* g(){};';
-const detectModernBrowserCode = `${detectModernBrowserDetector}window.${detectModernBrowserVarName}=true;`;
+const detectModernBrowserCode = `${detectModernBrowserDetector}if(location.protocol!="file:"){window.${detectModernBrowserVarName}=true}`;
 const dynamicFallbackInlineCode = `!function(){if(window.${detectModernBrowserVarName})return;console.warn("vite: loading legacy chunks, syntax error above and the same error below should be ignored");var e=document.getElementById("${legacyPolyfillId}"),n=document.createElement("script");n.src=e.src,n.onload=function(){${systemJSInlineCode}},document.body.appendChild(n)}();`;
 const modernChunkLegacyGuard = `export function __vite_legacy_guard(){${detectModernBrowserDetector}};`;
 
@@ -142,7 +142,7 @@ function toAssetPathFromHtml(filename, htmlPath, config) {
   );
 }
 const legacyEnvVarMarker = `__VITE_IS_LEGACY__`;
-const _require = node_module.createRequire((typeof document === 'undefined' ? new (require('u' + 'rl').URL)('file:' + __filename).href : (document.currentScript && document.currentScript.src || new URL('index.cjs', document.baseURI).href)));
+const _require = node_module.createRequire((typeof document === 'undefined' ? require('u' + 'rl').pathToFileURL(__filename).href : (document.currentScript && document.currentScript.src || new URL('index.cjs', document.baseURI).href)));
 function viteLegacyPlugin(options = {}) {
   let config;
   let targets;
@@ -181,7 +181,7 @@ function viteLegacyPlugin(options = {}) {
   const legacyConfigPlugin = {
     name: "vite:legacy-config",
     config(config2, env) {
-      if (env.command === "build") {
+      if (env.command === "build" && !config2.build?.ssr) {
         if (!config2.build) {
           config2.build = {};
         }
@@ -561,7 +561,7 @@ async function buildPolyfillChunk(mode, imports, bundle, facadeToChunkMap, build
   const res = await vite.build({
     mode,
     // so that everything is resolved from here
-    root: path.dirname(node_url.fileURLToPath((typeof document === 'undefined' ? new (require('u' + 'rl').URL)('file:' + __filename).href : (document.currentScript && document.currentScript.src || new URL('index.cjs', document.baseURI).href)))),
+    root: path.dirname(node_url.fileURLToPath((typeof document === 'undefined' ? require('u' + 'rl').pathToFileURL(__filename).href : (document.currentScript && document.currentScript.src || new URL('index.cjs', document.baseURI).href)))),
     configFile: false,
     logLevel: "error",
     plugins: [polyfillsPlugin(imports, excludeSystemJS)],

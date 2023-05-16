@@ -78,7 +78,7 @@ const legacyEntryId = "vite-legacy-entry";
 const systemJSInlineCode = `System.import(document.getElementById('${legacyEntryId}').getAttribute('data-src'))`;
 const detectModernBrowserVarName = "__vite_is_modern_browser";
 const detectModernBrowserDetector = 'import.meta.url;import("_").catch(()=>1);async function* g(){};';
-const detectModernBrowserCode = `${detectModernBrowserDetector}window.${detectModernBrowserVarName}=true;`;
+const detectModernBrowserCode = `${detectModernBrowserDetector}if(location.protocol!="file:"){window.${detectModernBrowserVarName}=true}`;
 const dynamicFallbackInlineCode = `!function(){if(window.${detectModernBrowserVarName})return;console.warn("vite: loading legacy chunks, syntax error above and the same error below should be ignored");var e=document.getElementById("${legacyPolyfillId}"),n=document.createElement("script");n.src=e.src,n.onload=function(){${systemJSInlineCode}},document.body.appendChild(n)}();`;
 const modernChunkLegacyGuard = `export function __vite_legacy_guard(){${detectModernBrowserDetector}};`;
 
@@ -177,7 +177,7 @@ function viteLegacyPlugin(options = {}) {
   const legacyConfigPlugin = {
     name: "vite:legacy-config",
     config(config2, env) {
-      if (env.command === "build") {
+      if (env.command === "build" && !config2.build?.ssr) {
         if (!config2.build) {
           config2.build = {};
         }
