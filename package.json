@@ -1,6 +1,6 @@
 {
   "name": "vite-plugin-legacy-extends",
-  "version": "4.0.14",
+  "version": "4.1.1",
   "description": "",
   "main": "./plugin-legacy/dist/index.cjs",
   "module": "./plugin-legacy/dist/index.mjs",
@@ -20,6 +20,7 @@
   "dependencies": {
     "@babel/core": "^7.21.3",
     "@babel/preset-env": "^7.20.2",
+    "@vitejs/plugin-legacy": "^4.1.1",
     "browserslist": "^4.21.5",
     "core-js": "^3.29.1",
     "magic-string": "^0.30.0",

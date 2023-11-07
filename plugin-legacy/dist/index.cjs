@@ -11,13 +11,20 @@ const MagicString = require('magic-string');
 const require$$0 = require('tty');
 const browserslist = require('browserslist');
 
-var picocolorsExports = {};
-var picocolors = {
-  get exports(){ return picocolorsExports; },
-  set exports(v){ picocolorsExports = v; },
-};
+function _interopDefaultCompat (e) { return e && typeof e === 'object' && 'default' in e ? e.default : e; }
 
-let tty = require$$0;
+const path__default = /*#__PURE__*/_interopDefaultCompat(path);
+const MagicString__default = /*#__PURE__*/_interopDefaultCompat(MagicString);
+const require$$0__default = /*#__PURE__*/_interopDefaultCompat(require$$0);
+const browserslist__default = /*#__PURE__*/_interopDefaultCompat(browserslist);
+
+function getDefaultExportFromCjs (x) {
+	return x && x.__esModule && Object.prototype.hasOwnProperty.call(x, 'default') ? x['default'] : x;
+}
+
+var picocolors = {exports: {}};
+
+let tty = require$$0__default;
 
 let isColorSupported =
 	!("NO_COLOR" in process.env || process.argv.includes("--no-color")) &&
@@ -74,7 +81,10 @@ let createColors = (enabled = isColorSupported) => ({
 });
 
 picocolors.exports = createColors();
-picocolorsExports.createColors = createColors;
+picocolors.exports.createColors = createColors;
+
+var picocolorsExports = picocolors.exports;
+const colors = /*@__PURE__*/getDefaultExportFromCjs(picocolorsExports);
 
 const safari10NoModuleFix = `!function(){var e=document,t=e.createElement("script");if(!("noModule"in t)&&"onbeforeload"in t){var n=!1;e.addEventListener("beforeload",(function(e){if(e.target===t)n=!0;else if(!e.target.hasAttribute("nomodule")||!n)return;e.preventDefault()}),!0),t.type="module",t.src=".",e.head.appendChild(t),t.remove()}}();`;
 const legacyPolyfillId = "vite-legacy-polyfill";
@@ -93,7 +103,7 @@ async function loadBabel() {
   }
   return babel;
 }
-const { loadConfig: browserslistLoadConfig } = browserslist;
+const { loadConfig: browserslistLoadConfig } = browserslist__default;
 function toOutputFilePathInHtml(filename, type, hostId, hostType, config, toRelative) {
   const { renderBuiltUrl } = config.experimental;
   let relative = config.base === "" || config.base === "./";
@@ -124,13 +134,13 @@ function toOutputFilePathInHtml(filename, type, hostId, hostType, config, toRela
   }
 }
 function getBaseInHTML(urlRelativePath, config) {
-  return config.base === "./" || config.base === "" ? path.posix.join(
-    path.posix.relative(urlRelativePath, "").slice(0, -2),
+  return config.base === "./" || config.base === "" ? path__default.posix.join(
+    path__default.posix.relative(urlRelativePath, "").slice(0, -2),
     "./"
   ) : config.base;
 }
 function toAssetPathFromHtml(filename, htmlPath, config) {
-  const relativeUrlPath = vite.normalizePath(path.relative(config.root, htmlPath));
+  const relativeUrlPath = vite.normalizePath(path__default.relative(config.root, htmlPath));
   const toRelative = (filename2, hostId) => getBaseInHTML(relativeUrlPath, config) + filename2;
   return toOutputFilePathInHtml(
     filename,
@@ -147,6 +157,12 @@ function viteLegacyPlugin(options = {}) {
   let config;
   let targets;
   const genLegacy = options.renderLegacyChunks !== false;
+  const genModern = options.renderModernChunks !== false;
+  if (!genLegacy && !genModern) {
+    throw new Error(
+      "`renderLegacyChunks` and `renderModernChunks` cannot be both false"
+    );
+  }
   const debugFlags = (process.env.DEBUG || "").split(",");
   const isDebug = debugFlags.includes("vite:*") || debugFlags.includes("vite:legacy");
   const facadeToLegacyChunkMap = /* @__PURE__ */ new Map();
@@ -154,7 +170,7 @@ function viteLegacyPlugin(options = {}) {
   const facadeToModernPolyfillMap = /* @__PURE__ */ new Map();
   const modernPolyfills = /* @__PURE__ */ new Set();
   const legacyPolyfills = /* @__PURE__ */ new Set();
-  if (Array.isArray(options.modernPolyfills)) {
+  if (Array.isArray(options.modernPolyfills) && genModern) {
     options.modernPolyfills.forEach((i) => {
       modernPolyfills.add(
         i.includes("/") ? `core-js/${i}` : `core-js/modules/${i}.js`
@@ -208,7 +224,7 @@ function viteLegacyPlugin(options = {}) {
     configResolved(config2) {
       if (overriddenBuildTarget) {
         config2.logger.warn(
-          picocolorsExports.yellow(
+          colors.yellow(
             `plugin-legacy overrode 'build.target'. You should pass 'targets' as an option to this plugin with the list of legacy browsers to support instead.`
           )
         );
@@ -286,7 +302,7 @@ function viteLegacyPlugin(options = {}) {
       isDebug && console.log(`[@vitejs/plugin-legacy] targets:`, targets);
       const getLegacyOutputFileName = (fileNames, defaultFileName = "[name]-legacy-[hash].js") => {
         if (!fileNames) {
-          return path.posix.join(config.build.assetsDir, defaultFileName);
+          return path__default.posix.join(config.build.assetsDir, defaultFileName);
         }
         return (chunkInfo) => {
           let fileName = typeof fileNames === "function" ? fileNames(chunkInfo) : fileNames;
@@ -309,9 +325,15 @@ function viteLegacyPlugin(options = {}) {
       const { rollupOptions } = config.build;
       const { output } = rollupOptions;
       if (Array.isArray(output)) {
-        rollupOptions.output = [...output.map(createLegacyOutput), ...output];
+        rollupOptions.output = [
+          ...output.map(createLegacyOutput),
+          ...genModern ? output : []
+        ];
       } else {
-        rollupOptions.output = [createLegacyOutput(output), output || {}];
+        rollupOptions.output = [
+          createLegacyOutput(output),
+          ...genModern ? [output || {}] : []
+        ];
       }
     },
     async renderChunk(raw, chunk, opts) {
@@ -319,10 +341,10 @@ function viteLegacyPlugin(options = {}) {
         return null;
       }
       if (!isLegacyChunk(chunk, opts)) {
-        if (options.modernPolyfills && !Array.isArray(options.modernPolyfills)) {
+        if (options.modernPolyfills && !Array.isArray(options.modernPolyfills) && genModern) {
           await detectPolyfills(raw, options.modernTargets || { esmodules: true }, modernPolyfills);
         }
-        const ms = new MagicString(raw);
+        const ms = new MagicString__default(raw);
         if (genLegacy && chunk.isEntry) {
           ms.prepend(modernChunkLegacyGuard);
         }
@@ -376,7 +398,7 @@ function viteLegacyPlugin(options = {}) {
             })
           ],
           [
-            "@babel/preset-env",
+            (await import('@babel/preset-env')).default,
             createBabelPresetEnvOptions(targets, {
               needPolyfills,
               ignoreBrowserslistConfig: options.ignoreBrowserslistConfig
@@ -395,40 +417,49 @@ function viteLegacyPlugin(options = {}) {
         return;
       if (chunk.fileName.includes("-legacy")) {
         facadeToLegacyChunkMap.set(chunk.facadeModuleId, chunk.fileName);
-        return;
+        if (genModern) {
+          return;
+        }
+      }
+      if (!genModern) {
+        html = html.replace(/<script type="module".*?<\/script>/g, "");
       }
       const tags = [];
       const htmlFilename = chunk.facadeModuleId?.replace(/\?.*$/, "");
-      const modernPolyfillFilename = facadeToModernPolyfillMap.get(
-        chunk.facadeModuleId
-      );
-      if (modernPolyfillFilename) {
-        tags.push({
-          tag: "script",
-          attrs: {
-            type: "module",
-            crossorigin: true,
-            src: toAssetPathFromHtml(
-              modernPolyfillFilename,
-              chunk.facadeModuleId,
-              config
-            )
-          }
-        });
-      } else if (modernPolyfills.size) {
-        throw new Error(
-          `No corresponding modern polyfill chunk found for ${htmlFilename}`
+      if (genModern) {
+        const modernPolyfillFilename = facadeToModernPolyfillMap.get(
+          chunk.facadeModuleId
         );
+        if (modernPolyfillFilename) {
+          tags.push({
+            tag: "script",
+            attrs: {
+              type: "module",
+              crossorigin: true,
+              src: toAssetPathFromHtml(
+                modernPolyfillFilename,
+                chunk.facadeModuleId,
+                config
+              )
+            }
+          });
+        } else if (modernPolyfills.size) {
+          throw new Error(
+            `No corresponding modern polyfill chunk found for ${htmlFilename}`
+          );
+        }
       }
       if (!genLegacy) {
         return { html, tags };
       }
-      tags.push({
-        tag: "script",
-        attrs: { nomodule: true },
-        children: safari10NoModuleFix,
-        injectTo: "body"
-      });
+      if (genModern) {
+        tags.push({
+          tag: "script",
+          attrs: { nomodule: genModern },
+          children: safari10NoModuleFix,
+          injectTo: "body"
+        });
+      }
       const legacyPolyfillFilename = facadeToLegacyPolyfillMap.get(
         chunk.facadeModuleId
       );
@@ -436,7 +467,7 @@ function viteLegacyPlugin(options = {}) {
         tags.push({
           tag: "script",
           attrs: {
-            nomodule: true,
+            nomodule: genModern,
             crossorigin: true,
             id: legacyPolyfillId,
             src: toAssetPathFromHtml(
@@ -459,7 +490,7 @@ function viteLegacyPlugin(options = {}) {
         tags.push({
           tag: "script",
           attrs: {
-            nomodule: true,
+            nomodule: genModern,
             crossorigin: true,
             // we set the entry path on the element as an attribute so that the
             // script content will stay consistent - which allows using a constant
@@ -479,7 +510,7 @@ function viteLegacyPlugin(options = {}) {
           `No corresponding legacy entry chunk found for ${htmlFilename}`
         );
       }
-      if (genLegacy && legacyPolyfillFilename && legacyEntryFilename) {
+      if (legacyPolyfillFilename && legacyEntryFilename && genModern) {
         tags.push({
           tag: "script",
           attrs: { type: "module" },
@@ -502,7 +533,7 @@ function viteLegacyPlugin(options = {}) {
       if (config.build.ssr) {
         return;
       }
-      if (isLegacyBundle(bundle, opts)) {
+      if (isLegacyBundle(bundle, opts) && genModern) {
         for (const name in bundle) {
           if (bundle[name].type === "asset" && !/.+\.map$/.test(name)) {
             delete bundle[name];
@@ -521,7 +552,7 @@ async function detectPolyfills(code, targets, list) {
     configFile: false,
     presets: [
       [
-        "@babel/preset-env",
+        (await import('@babel/preset-env')).default,
         createBabelPresetEnvOptions(targets, {
           ignoreBrowserslistConfig: true
         })
@@ -561,7 +592,7 @@ async function buildPolyfillChunk(mode, imports, bundle, facadeToChunkMap, build
   const res = await vite.build({
     mode,
     // so that everything is resolved from here
-    root: path.dirname(node_url.fileURLToPath((typeof document === 'undefined' ? require('u' + 'rl').pathToFileURL(__filename).href : (document.currentScript && document.currentScript.src || new URL('index.cjs', document.baseURI).href)))),
+    root: path__default.dirname(node_url.fileURLToPath((typeof document === 'undefined' ? require('u' + 'rl').pathToFileURL(__filename).href : (document.currentScript && document.currentScript.src || new URL('index.cjs', document.baseURI).href)))),
     configFile: false,
     logLevel: "error",
     plugins: [polyfillsPlugin(imports, excludeSystemJS)],
